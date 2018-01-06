@@ -15,3 +15,10 @@ This project is also aimed at competing in the
 
 The tools used in this project are the Python interpreter together with the
 Tensorflow library.
+
+
+## Reference Article
+
+[Classification of breast cancer histology images using Convolutional Neural Networks](http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0177544)
+
+[Original dataset (Freely available)](https://rdm.inesctec.pt/dataset/nis-2017-003)
