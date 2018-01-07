@@ -121,3 +121,5 @@ ENV/
 
 # TensorFlow Record
 *.tfrecord
+
+*.jpeg
