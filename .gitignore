@@ -116,3 +116,8 @@ ENV/
 # Dataset images
 *.tif
 
+# TensorFlow Checkpoints
+*.ckpt
+
+# TensorFlow Record
+*.tfrecord
