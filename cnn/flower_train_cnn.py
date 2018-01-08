@@ -4,10 +4,20 @@ import os # path join
 
 
 DATA_DIR = "../dataset/"
-TRAINING_SET_SIZE = 400
-BATCH_SIZE = 10
+TRAINING_SET_SIZE = 1000
+BATCH_SIZE = 50
 IMAGE_SIZE = 1536
+N_CHANNEL = 3
+N_CLASSES = 4
 FLAT_LEN = IMAGE_SIZE**2
+
+FEATURES_LIST = {"image/encoded": tf.FixedLenFeature([], tf.string),
+        "image/height": tf.FixedLenFeature([], tf.int64),
+        "image/width": tf.FixedLenFeature([], tf.int64),
+        "image/filename": tf.FixedLenFeature([], tf.string),
+        "image/class/label": tf.FixedLenFeature([], tf.int64),}
+
+
 
 def _int64_feature(value):
     return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
@@ -27,14 +37,9 @@ class _image_object:
 def read_and_decode(filename_queue):
     reader = tf.TFRecordReader()
     _, serialized_example = reader.read(filename_queue)
-    features = tf.parse_single_example(serialized_example, features = {
-        "image/encoded": tf.FixedLenFeature([], tf.string),
-        "image/height": tf.FixedLenFeature([], tf.int64),
-        "image/width": tf.FixedLenFeature([], tf.int64),
-        "image/filename": tf.FixedLenFeature([], tf.string),
-        "image/class/label": tf.FixedLenFeature([], tf.int64),})
+    features = tf.parse_single_example(serialized_example, features=FEATURES_LIST)
     image_encoded = features["image/encoded"]
-    image_raw = tf.image.decode_jpeg(image_encoded, channels=3)
+    image_raw = tf.image.decode_jpeg(image_encoded, channels=N_CHANNEL)
     image_object = _image_object()
     image_object.image = tf.image.resize_image_with_crop_or_pad(image_raw, IMAGE_SIZE, IMAGE_SIZE)
     image_object.height = features["image/height"]
@@ -43,13 +48,7 @@ def read_and_decode(filename_queue):
     image_object.label = tf.cast(features["image/class/label"], tf.int64)
     return image_object
 
-def flower_input(if_random = True, if_training = True):
-    if(if_training):
-        filenames = [os.path.join(DATA_DIR, "train-00000-of-00001")]
-        #filenames = [os.path.join(DATA_DIR, "train-00000-of-00001" % i) for i in range(0, 1)]
-    else:
-        filenames = [os.path.join(DATA_DIR, "" % i) for i in range(0, 1)]
-
+def input_fn(filenames, if_random = True):
     for f in filenames:
         if not tf.gfile.Exists(f):
             raise ValueError("Failed to find file: " + f)
@@ -95,7 +94,7 @@ def conv2d(x, W):
 def max_pool_2x2(x):
     return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
 
-def flower_inference(image_batch):
+def inference_fn(image_batch):
     #x = tf.placeholder(tf.float32, [None, flat_len])
     x_image = tf.reshape(image_batch, [-1, 1536*1536*3])
     W = tf.Variable(tf.zeros([1536*1536*3, 4]))
@@ -106,23 +105,26 @@ def flower_inference(image_batch):
     return y
 
 
-def flower_train():
-    image_batch_out, label_batch_out, filename_batch = flower_input(if_random = False, if_training = True)
+def train_fn():
+    image_batch_out, label_batch_out, filename_batch = input_fn([DATA_DIR + "train.tfrecord"])
 
-    image_batch_placeholder = tf.placeholder(tf.float32, shape=[BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, 3])
-    image_batch = tf.reshape(image_batch_out, (BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, 3))
+    image_batch_placeholder = tf.placeholder(tf.float32
+                            , shape=[BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, N_CHANNEL])
+    image_batch = tf.reshape(image_batch_out
+                            , (BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, N_CHANNEL))
 
-    label_batch_placeholder = tf.placeholder(tf.float32, shape=[BATCH_SIZE, 4])
+    label_batch_placeholder = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_CLASSES])
     label_offset = -tf.ones([BATCH_SIZE], dtype=tf.int64, name="label_batch_offset")
-    label_batch_one_hot = tf.one_hot(tf.add(label_batch_out, label_offset), depth=4, on_value=1.0, off_value=0.0)
+    label_batch_one_hot = tf.one_hot(tf.add(label_batch_out, label_offset)
+                                     , depth=N_CLASSES, on_value=1.0, off_value=0.0)
 
-    logits_out = flower_inference(image_batch_placeholder)
+    logits_out = inference_fn(image_batch_placeholder)
 #    loss = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(labels=label_batch_one_hot, logits=logits_out))
-    loss = tf.losses.mean_squared_error(labels=label_batch_placeholder, predictions=logits_out)
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=label_batch_placeholder, logits=logits_out))
 
-    train_step = tf.train.GradientDescentOptimizer(0.0005).minimize(loss)
+    train_step = tf.train.GradientDescentOptimizer(0.0001).minimize(loss)
 
-    saver = tf.train.Saver()
+    #saver = tf.train.Saver()
 
     with tf.Session() as sess:
         # Visualize the graph through tensorboard.
@@ -133,21 +135,22 @@ def flower_train():
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(coord=coord, sess=sess)
 
-        for i in range(TRAINING_SET_SIZE * 100):
+        for i in range(500):
             image_out, label_out, label_batch_one_hot_out, filename_out = sess.run([image_batch, label_batch_out, label_batch_one_hot, filename_batch])
 
             _, infer_out, loss_out = sess.run([train_step, logits_out, loss], feed_dict={image_batch_placeholder: image_out, label_batch_placeholder: label_batch_one_hot_out})
 
-            print(i)
-            print(image_out.shape)
-            print("label_out: ")
-            print(filename_out)
-            print(label_out)
-            print(label_batch_one_hot_out)
-            print("infer_out: ")
-            print(infer_out)
-            print("loss: ")
-            print(loss_out)
+            if i%10 == 0:
+                print(i)
+                print(image_out.shape)
+                print("label_out: ")
+                print(filename_out)
+                print(label_out)
+                print(label_batch_one_hot_out)
+                print("infer_out: ")
+                print(infer_out)
+                print("loss: ")
+                print(loss_out)
             #if(i%50 == 0):
             #    saver.save(sess, "dltmp/checkpoint-train.ckpt")
 
@@ -156,7 +159,7 @@ def flower_train():
         sess.close()
 
 
-
+'''
 def flower_eval():
     image_batch_out, label_batch_out, filename_batch = flower_input(if_random = False, if_training = False)
 
@@ -202,6 +205,6 @@ def flower_eval():
         coord.request_stop()
         coord.join(threads)
         sess.close()
-
-flower_train()
+'''
+train_fn()
 #flower_eval()

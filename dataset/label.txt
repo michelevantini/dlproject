@@ -1,4 +1,4 @@
-benign_jpg
-insitu_jpg
-invasive_jpg
-normal_jpg
+benign
+insitu
+invasive
+normal
