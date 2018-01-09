@@ -105,6 +105,7 @@ ENV/
 
 # IntelliJ IDEs
 .idea/*
+cnn/idea/*
 
 # Pickle Files 
 *.cache
@@ -115,6 +116,8 @@ ENV/
 
 # Dataset images
 *.tif
+*.jpeg
+dataset/*
 
 # TensorFlow Checkpoints
 *.ckpt
