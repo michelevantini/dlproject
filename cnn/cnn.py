@@ -7,18 +7,23 @@ Some code borrowed from: https://github.com/aymericdamien/TensorFlow-Examples/bl
 import tensorflow as tf  # tensorflow module
 import numpy as np  # numpy module
 import os  # path join
+import time
 
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
 DATA_DIR = os.path.join(CURRENT_DIR, os.path.pardir, "dataset")
 TRAIN_FILE = "train.tfrecord"
 VALIDATION_FILE = "validation.tfrecord"
+assert os.path.exists(os.path.join(DATA_DIR, TRAIN_FILE))
+# assert os.path.exists(DATA_DIR, VALIDATION_FILE)
 TRAINING_SET_SIZE = 3200
 N_EPOCHS = 5
 BATCH_SIZE = 10
 IMAGE_SIZE = 1536
 N_CHANNEL = 3
 N_CLASSES = 4
-FILTERS_CHOICE_LAYER_1 = [2, 3, 5, 4, 6, 10, 7]
+FILTERS_CHOICES_LAYER_1 = [2, 3, 5, 4, 6, 10, 7]
+LEARNING_RATE = 0.000001
+NETWORK_CHOICE = "test_1"  # choices: "default", "original", "test_1"
 
 FEATURES_LIST = {"image/encoded": tf.FixedLenFeature([], tf.string),
                  "image/height": tf.FixedLenFeature([], tf.int64),
@@ -110,42 +115,56 @@ def max_pool_2x2(x):
     return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
 
 
-def inference_fn(image_batch, n_filter, filter_sizes, pool_sizes, reuse):
+def generate_cnn(image_batch, n_filters, filters_sizes, pool_sizes, reuse, flatten=True):
+
+    # Check sizes are coherent.
+    assert len(n_filters) == len(filters_sizes) == len(pool_sizes)
 
     with tf.variable_scope('ConvNet', reuse=reuse):
-        x = tf.reshape(image_batch, [-1, IMAGE_SIZE, IMAGE_SIZE, N_CHANNEL])
-        conv_input = x
-        last_pool = None
+        conv_input = tf.reshape(image_batch, [-1, IMAGE_SIZE, IMAGE_SIZE, N_CHANNEL])
+        pool = None
         after_pool_size = IMAGE_SIZE
-        for i in range(len(n_filter)):
+        for i in range(len(n_filters)):
             conv = tf.layers.conv2d(
-                inputs = conv_input
-                , filters = n_filter[i]
-                , kernel_size = filter_sizes[i]
-                , strides=(1,1)
-                , activation=tf.nn.relu
+                inputs=conv_input,
+                filters=n_filters[i],
+                kernel_size=filters_sizes[i],
+                strides=(1, 1),
+                activation=tf.nn.relu
             )
 
-            after_conv_size = int(after_pool_size-filter_sizes[i][0]+1)
+            # Compute size of following layer.
+            after_conv_size = int(after_pool_size - filters_sizes[i][0] + 1)
 
             pool = tf.layers.max_pooling2d(
-                inputs=conv
-                , pool_size=pool_sizes[i]
-                , strides=pool_sizes[i][0]
+                inputs=conv,
+                pool_size=pool_sizes[i],
+                strides=pool_sizes[i][0]
             )
 
+            # Compute the size of the following layer.
             after_pool_size = int((after_conv_size - pool_sizes[i][0])/pool_sizes[i][0] + 1)
 
+            # Output is the input of the next iteration.
             conv_input = pool
-            last_pool = pool
 
-        last_pool_flat = tf.reshape(last_pool, [-1, after_pool_size*after_pool_size*n_filter[-1]])
-        fc_layer = tf.layers.dense(
-            inputs = last_pool_flat
-            , units = N_CLASSES
+        # Flatten for fully connected.
+        pool_flat = tf.reshape(pool, [-1, after_pool_size * after_pool_size * n_filters[-1]])
+
+    if flatten:
+        return pool_flat
+    else:
+        return pool
+
+
+def generate_fc(fc_input, layer_sizes):
+    for i in range(len(layer_sizes)):
+        fc_input = tf.layers.dense(
+            inputs=fc_input,
+            units=layer_sizes[i]
         )
 
-    return fc_layer
+    return fc_input
 
 
 def train_fn():
@@ -162,37 +181,103 @@ def train_fn():
         label_batch_one_hot = tf.one_hot(tf.add(label_batch, label_offset),
                                          depth=N_CLASSES, on_value=1.0, off_value=0.0)
 
+        # *--------------------------*
+        # | Create the network graph |
+        # *--------------------------*
+        # If you want to create another network graph,
+        # give it a name and add it here under an *if* branch.
+        global NETWORK_CHOICE  # use global scope, not local
+        # --- Network following original paper ---
+        if NETWORK_CHOICE == "original":
+            network_cnn = generate_cnn(
+                image_batch=image_batch_placeholder,
+                n_filters=[16, 32, 64, 64, 32],
+                filters_sizes=[[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]],
+                pool_sizes=[[3, 3], [2, 2], [2, 2], [3, 3], [3, 3]],
+                reuse=False,
+                flatten=True
+            )
 
+            network_fc = generate_fc(
+                fc_input=network_cnn,
+                layer_sizes=[256, 128, N_CLASSES]
+            )
 
-        logits = inference_fn(image_batch_placeholder, [32], [[3,3]], [[2,2]], False)
-        # loss = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(labels=label_batch_one_hot, logits=logits))
-        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=label_batch_placeholder, logits=logits))
+        # --- Network for testing configuration 1 ---
+        if NETWORK_CHOICE == "test_1":
+            network_cnn = generate_cnn(
+                image_batch=image_batch_placeholder,
+                n_filters=[64, 32, 64, 32, 64, 32],
+                filters_sizes=[[2, 2], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3]],
+                pool_sizes=[[3, 3], [3, 3], [2, 2], [2, 2], [3, 3], [3, 3]],
+                reuse=False,
+                flatten=True
+            )
 
-        train_step = tf.train.GradientDescentOptimizer(0.0001).minimize(loss)
+            network_fc = generate_fc(
+                fc_input=network_cnn,
+                layer_sizes=[512, 256, 128, 64, 16, N_CLASSES]
+            )
+
+        # --- Default network ---
+        else:
+            NETWORK_CHOICE = "default"
+            # Create the network_cnn structure
+            network_cnn = generate_cnn(
+                image_batch=image_batch_placeholder,
+                n_filters=[32],
+                filters_sizes=[[3, 3]],
+                pool_sizes=[[2, 2]],
+                reuse=False,
+                flatten=True
+            )
+
+            # Add the fc at the end.
+            network_fc = generate_fc(
+                fc_input=network_cnn,
+                layer_sizes=[N_CLASSES]
+            )
+
+        # loss = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(labels=label_batch_one_hot, network_cnn=network_cnn))
+        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=label_batch_placeholder, logits=network_fc))
+
+        train_step = tf.train.AdamOptimizer(LEARNING_RATE).minimize(loss)
 
         # saver = tf.train.Saver()
 
         with tf.Session() as sess:
+            print("Starting training.. Using {} network architecture.".format(NETWORK_CHOICE))
             # Visualize the graph through tensorboard.
-            file_writer = tf.summary.FileWriter("./logs", sess.graph)
+            # file_writer = tf.summary.FileWriter("./logs", sess.graph)
 
             sess.run(tf.global_variables_initializer())
             # saver.restore(sess, "dltmp/checkpoint-train.ckpt")
             coord = tf.train.Coordinator()
             threads = tf.train.start_queue_runners(coord=coord, sess=sess)
+            step = 0
+
+            # Start taking time (full)
+            start_time = time.time()
 
             try:
-                step = 0
                 while True:
+
                     image_out, label_out, label_batch_one_hot_out = sess.run(
                         [image_batch, label_batch, label_batch_one_hot])
 
-                    _, infer_out, loss_out = sess.run([train_step, logits, loss],
+                    # Start taking time (iteration)
+                    start_time_iteration = time.time()
+                    _, infer_out, loss_out = sess.run([train_step, network_fc, loss],
                                                       feed_dict={image_batch_placeholder: image_out,
                                                                  label_batch_placeholder: label_batch_one_hot_out})
+                    # Save time (iteration)
+                    iteration_time = time.time() - start_time_iteration
 
                     if step % 10 == 0:
-                        print(step)
+                        print(
+                            step, ": ", "loss: %.3f " % loss_out,
+                            " - iteration time: %.2fs" % iteration_time,
+                            sep="")
                         # print(image_out.shape)
                         # print("label_out: ")
                         # print(filename_out)
@@ -200,12 +285,13 @@ def train_fn():
                         # print(label_batch_one_hot_out)
                         # print("infer_out: ")
                         # print(infer_out)
-                        print("loss: ", loss_out)
                     # if(i%50 == 0):
                     #    saver.save(sess, "dltmp/checkpoint-train.ckpt")
                     step += 1
             except tf.errors.OutOfRangeError:
-                print('Done training for %d epochs, %d steps.' % (N_EPOCHS, step))
+                # Save time (full)
+                total_running_time = time.time() - start_time
+                print('Done training for %d epochs, %d steps, %1.2f seconds.' % (N_EPOCHS, step, total_running_time))
 
             coord.request_stop()
             coord.join(threads)
