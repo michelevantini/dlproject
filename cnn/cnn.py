@@ -110,18 +110,10 @@ def max_pool_2x2(x):
     return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
 
 
-def inference_fn(image_batch, n_filter, filter_sizes, pool_sizes, last_pool_dim, reuse):
+def inference_fn(image_batch, n_filter, filter_sizes, pool_sizes, reuse):
 
     with tf.variable_scope('ConvNet', reuse=reuse):
-        # --- Initialization ---
         x = tf.reshape(image_batch, [-1, IMAGE_SIZE, IMAGE_SIZE, N_CHANNEL])
-
-        # W = tf.Variable(tf.zeros([1536 * 1536 * 3, 4]))
-        # b = tf.Variable(tf.zeros([4]))
-
-        # y = tf.nn.softmax(tf.matmul(x_image, W) + b)
-
-        # --- 1st conv layer ---
         conv_input = x
         last_pool = None
         after_pool_size = IMAGE_SIZE
@@ -153,8 +145,6 @@ def inference_fn(image_batch, n_filter, filter_sizes, pool_sizes, last_pool_dim,
             , units = N_CLASSES
         )
 
-        print(fc_layer.shape.dims)
-
     return fc_layer
 
 
@@ -174,7 +164,7 @@ def train_fn():
 
 
 
-        logits = inference_fn(image_batch_placeholder, [32], [[3,3]], [[2,2]], 767*767*32, False)
+        logits = inference_fn(image_batch_placeholder, [32], [[3,3]], [[2,2]], False)
         # loss = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(labels=label_batch_one_hot, logits=logits))
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=label_batch_placeholder, logits=logits))
 
