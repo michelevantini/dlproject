@@ -7,11 +7,10 @@ Some code borrowed from: https://github.com/aymericdamien/TensorFlow-Examples/bl
 import tensorflow as tf  # tensorflow module
 import numpy as np  # numpy module
 import os  # path join
-from build_image_data import split_dataset
+from cnn.build_image_data import split_dataset
 import time
 
-N_CPU = 8
-SPLIT_DATASET = False
+# --- Constants ---
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
 DATA_DIR = os.path.join(CURRENT_DIR, os.path.pardir, "dataset")
 TRAIN_FILE = "train.tfrecord"
@@ -19,6 +18,18 @@ TEST_FILE = "test.tfrecord"
 VALIDATION_FILE = "validation.tfrecord"
 assert os.path.exists(os.path.join(DATA_DIR, TRAIN_FILE))
 # assert os.path.exists(DATA_DIR, VALIDATION_FILE)
+FEATURES_LIST = {"image/encoded": tf.FixedLenFeature([], tf.string),
+                 "image/height": tf.FixedLenFeature([], tf.int64),
+                 "image/width": tf.FixedLenFeature([], tf.int64),
+                 "image/filename": tf.FixedLenFeature([], tf.string),
+                 "image/class/label": tf.FixedLenFeature([], tf.int64), }
+# -----------------
+
+
+# --- Settings ---
+N_CPU = 8
+SPLIT_DATASET = False
+
 TRAINING_SET_SIZE = 3200
 N_EPOCHS = 5
 BATCH_SIZE = 8  # using a power of 2
@@ -32,13 +43,7 @@ CNN_REGULARIZATION = 0.0002
 FC_REGULARIZATION = 0.0002
 PRINT_RESOLUTION = 1  # print an update every x iterations
 NETWORK_CHOICE = "default"  # choices: "default", "original", "test_1"
-
-
-FEATURES_LIST = {"image/encoded": tf.FixedLenFeature([], tf.string),
-                 "image/height": tf.FixedLenFeature([], tf.int64),
-                 "image/width": tf.FixedLenFeature([], tf.int64),
-                 "image/filename": tf.FixedLenFeature([], tf.string),
-                 "image/class/label": tf.FixedLenFeature([], tf.int64), }
+# ----------------
 
 
 def _int64_feature(value):
@@ -160,6 +165,7 @@ def generate_cnn(image_batch, n_filters, filters_sizes, pool_sizes, reuse, flatt
         return pool_flat
     else:
         return pool
+
 
 def generate_fc(fc_input, layer_sizes):
     """Creates a regularised fully connected network.

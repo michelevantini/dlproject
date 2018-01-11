@@ -105,7 +105,8 @@ ENV/
 
 # IntelliJ IDEs
 .idea/*
-cnn/idea/*
+cnn/.idea/*
+*/.idea/*
 
 # Pickle Files 
 *.cache
