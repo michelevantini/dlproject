@@ -7,10 +7,13 @@ Some code borrowed from: https://github.com/aymericdamien/TensorFlow-Examples/bl
 import tensorflow as tf  # tensorflow module
 import numpy as np  # numpy module
 import os  # path join
+from build_image_data import split_dataset
+
 
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
 DATA_DIR = os.path.join(CURRENT_DIR, os.path.pardir, "dataset")
 TRAIN_FILE = "train.tfrecord"
+TEST_FILE = "test.tfrecord"
 VALIDATION_FILE = "validation.tfrecord"
 TRAINING_SET_SIZE = 3200
 N_EPOCHS = 5
@@ -50,7 +53,7 @@ def decode(serialized_example):
     return image, label
 
 
-def inputs(train, batch_size, num_epochs):
+def inputs(dataset_file, batch_size, num_epochs):
     """Reads input data num_epochs times.
     Args:
       train: Selects between the training (True) and validation (False) data.
@@ -70,8 +73,7 @@ def inputs(train, batch_size, num_epochs):
         required.
     """
     if not num_epochs: num_epochs = None
-    filename = os.path.join(DATA_DIR,
-                            TRAIN_FILE if train else VALIDATION_FILE)
+    filename = os.path.join(DATA_DIR, dataset_file)
 
     with tf.name_scope('input'):
         # TFRecordDataset opens a protobuf and reads entries line by line
@@ -139,18 +141,25 @@ def inference_fn(image_batch, n_filter, filter_sizes, pool_sizes, reuse):
             conv_input = pool
             last_pool = pool
 
-        last_pool_flat = tf.reshape(last_pool, [-1, after_pool_size*after_pool_size*n_filter[-1]])
+        FINAL_SIZE = after_pool_size*after_pool_size*n_filter[-1]
+        last_pool_flat = tf.reshape(last_pool, [-1, FINAL_SIZE])
+
+        W = weight_variable([FINAL_SIZE, N_CLASSES])
+        b = weight_variable([N_CLASSES])
+        fc_layer = tf.nn.softmax(tf.matmul(last_pool_flat, W) + b)
+        '''
         fc_layer = tf.layers.dense(
             inputs = last_pool_flat
             , units = N_CLASSES
         )
+        '''
 
     return fc_layer
 
 
 def train_fn():
     with tf.Graph().as_default():
-        image_batch, label_batch = inputs(train=True, batch_size=BATCH_SIZE,
+        image_batch, label_batch = inputs(TRAIN_FILE, batch_size=BATCH_SIZE,
                                           num_epochs=N_EPOCHS)
 
         image_batch_placeholder = tf.placeholder(tf.float32,
@@ -169,7 +178,6 @@ def train_fn():
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=label_batch_placeholder, logits=logits))
 
         train_step = tf.train.GradientDescentOptimizer(0.0001).minimize(loss)
-
         # saver = tf.train.Saver()
 
         with tf.Session() as sess:
@@ -191,15 +199,17 @@ def train_fn():
                                                       feed_dict={image_batch_placeholder: image_out,
                                                                  label_batch_placeholder: label_batch_one_hot_out})
 
-                    if step % 10 == 0:
+                    #sess.run(tf.round(infer_out))
+
+                    if step % 5 == 0:
                         print(step)
                         # print(image_out.shape)
                         # print("label_out: ")
                         # print(filename_out)
                         # print(label_out)
-                        # print(label_batch_one_hot_out)
+                        print(label_batch_one_hot_out)
                         # print("infer_out: ")
-                        # print(infer_out)
+                        print(infer_out)
                         print("loss: ", loss_out)
                     # if(i%50 == 0):
                     #    saver.save(sess, "dltmp/checkpoint-train.ckpt")
@@ -211,6 +221,10 @@ def train_fn():
             coord.join(threads)
             sess.close()
 
-
+SPLIT_DATASET = False
 if __name__ == '__main__':
+    if SPLIT_DATASET:
+        with tf.Session() as sess:
+            sess.run(split_dataset())
+            sess.close()
     train_fn()

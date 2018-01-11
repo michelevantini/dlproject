@@ -76,11 +76,9 @@ import threading
 import numpy as np
 import tensorflow as tf
 
-tf.app.flags.DEFINE_string('train_directory', './',
+tf.app.flags.DEFINE_string('train_directory', '../dataset',
                            'Training data directory')
-tf.app.flags.DEFINE_string('validation_directory', './',
-                           'Validation data directory')
-tf.app.flags.DEFINE_string('output_directory', './',
+tf.app.flags.DEFINE_string('output_directory', '../dataset',
                            'Output data directory')
 
 tf.app.flags.DEFINE_integer('train_shards', 1,
@@ -98,10 +96,12 @@ tf.app.flags.DEFINE_integer('num_threads', 1,
 #   flower
 # where each line corresponds to a label. We map each label contained in
 # the file to an integer corresponding to the line number starting from 0.
-tf.app.flags.DEFINE_string('labels_file', './label.txt', 'Labels file')
+tf.app.flags.DEFINE_string('labels_file', '../dataset/label.txt', 'Labels file')
 
 
 FLAGS = tf.app.flags.FLAGS
+
+import time
 
 
 def _int64_feature(value):
@@ -250,7 +250,7 @@ def _process_image_files_batch(coder, thread_index, ranges, name, filenames,
   for s in range(num_shards_per_batch):
     # Generate a sharded version of the file name, e.g. 'train-00002-of-00010'
     shard = thread_index * num_shards_per_batch + s
-    output_filename = '%s-%.5d-of-%.5d' % (name, shard, num_shards)
+    output_filename = name
     output_file = os.path.join(FLAGS.output_directory, output_filename)
     writer = tf.python_io.TFRecordWriter(output_file)
 
@@ -399,6 +399,11 @@ def _find_image_files(data_dir, labels_file):
   return filenames, texts, labels
 
 
+N = 3200
+TRAIN_SIZE = int(N*0.8)
+TEST_SIZE = int(N*0.1)
+VALID_SIZE = int(N*0.1)
+
 def _process_dataset(name, directory, num_shards, labels_file):
   """Process a complete data set and save it as a TFRecord.
 
@@ -408,11 +413,29 @@ def _process_dataset(name, directory, num_shards, labels_file):
     num_shards: integer number of shards for this data set.
     labels_file: string, path to the labels file.
   """
+  start_time = time.time()
+
   filenames, texts, labels = _find_image_files(directory, labels_file)
-  _process_image_files(name, filenames, texts, labels, num_shards)
+  filenames = np.array(filenames)
+  texts = np.array(texts)
+  labels = np.array(labels)
+  indexes = list(range(N))
+  np.random.seed(int(time.time()))
+  np.random.shuffle(indexes)
+  train_idxs = indexes[0:TRAIN_SIZE]
+  test_idxs = indexes[TRAIN_SIZE:TRAIN_SIZE+TEST_SIZE]
+  validation_idxs = indexes[TRAIN_SIZE+TEST_SIZE:]
+
+  _process_image_files("train.tfrecord", filenames[train_idxs], texts[train_idxs], labels[train_idxs], num_shards)
+  _process_image_files("test.tfrecord", filenames[test_idxs], texts[test_idxs], labels[test_idxs], num_shards)
+  _process_image_files("validation.tfrecord", filenames[validation_idxs], texts[validation_idxs], labels[validation_idxs], num_shards)
+  end_time = time.time()
+  run_time = end_time - start_time
+  print(run_time)
 
 
-def main(unused_argv):
+#def main(unused_argv):
+def split_dataset():
   assert not FLAGS.train_shards % FLAGS.num_threads, (
       'Please make the FLAGS.num_threads commensurate with FLAGS.train_shards')
   assert not FLAGS.validation_shards % FLAGS.num_threads, (
@@ -421,11 +444,14 @@ def main(unused_argv):
   print('Saving results to %s' % FLAGS.output_directory)
 
   # Run it!
-  _process_dataset('validation', FLAGS.validation_directory,
-                   FLAGS.validation_shards, FLAGS.labels_file)
+  #_process_dataset('validation', FLAGS.validation_directory,
+  #                 FLAGS.validation_shards, FLAGS.labels_file)
   _process_dataset('train', FLAGS.train_directory,
                    FLAGS.train_shards, FLAGS.labels_file)
 
 
-if __name__ == '__main__':
-  tf.app.run()
+#def split_dataset():
+#  tf.app.run(main=main)
+
+#if __name__ == '__main__':
+#  tf.app.run()
