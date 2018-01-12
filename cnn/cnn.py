@@ -359,8 +359,8 @@ def train_fn(test=False):
         # saver = tf.train.Saver()
 
         config = tf.ConfigProto(device_count={"CPU": N_CPU},
-                                inter_op_parallelism_threads=1,
-                                intra_op_parallelism_threads=1)
+                                inter_op_parallelism_threads=10,
+                                intra_op_parallelism_threads=10)
 
         with tf.Session(config=config) as sess:
             print("Starting training.. Using {} network architecture.".format(NETWORK_CHOICE))
@@ -432,8 +432,8 @@ def train_fn(test=False):
 def test_fn(network_fc, loss, image_batch_placeholder, label_batch_placeholder
             , accuracy, infer_placeholder, label_placeholder):
     config = tf.ConfigProto(device_count={"CPU": N_CPU},
-                            inter_op_parallelism_threads=1,
-                            intra_op_parallelism_threads=1)
+                            inter_op_parallelism_threads=10,
+                            intra_op_parallelism_threads=10)
 
     with tf.Session(config=config) as sess:
         print("Starting training.. Using {} network architecture.".format(NETWORK_CHOICE))
