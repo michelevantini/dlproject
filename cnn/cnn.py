@@ -19,19 +19,21 @@ TEST_FILE = "test.tfrecord"
 VALIDATION_FILE = "validation.tfrecord"
 assert os.path.exists(os.path.join(DATA_DIR, TRAIN_FILE))
 # assert os.path.exists(DATA_DIR, VALIDATION_FILE)
-TRAINING_SET_SIZE = 3200
+TRAINING_SET_SIZE = 2560
+TEST_SET_SIZE = 320
+VALIDATION_SET_SIZE = 320
 N_EPOCHS = 5
-BATCH_SIZE = 8  # using a power of 2
+BATCH_SIZE = 64  # using a power of 2
 QUEUE_SIZE = 2
 IMAGE_SIZE = 1536
 N_CHANNELS = 3
 N_CLASSES = 4
 FILTERS_CHOICES_LAYER_1 = [2, 3, 5, 4, 6, 10, 7]
-LEARNING_RATE = 0.000001
+LEARNING_RATE = 0.001
 CNN_REGULARIZATION = 0.0002
 FC_REGULARIZATION = 0.0002
 PRINT_RESOLUTION = 1  # print an update every x iterations
-NETWORK_CHOICE = "default"  # choices: "default", "original", "test_1"
+NETWORK_CHOICE = "simple1"  # choices: "default", "original", "test_1", "simple1"
 
 
 FEATURES_LIST = {"image/encoded": tf.FixedLenFeature([], tf.string),
@@ -64,11 +66,11 @@ def decode(serialized_example):
     return image, label
 
 def weight_variable(shape):
-    initial = tf.truncated_normal(shape, stddev=0.05)
+    initial = tf.random_normal(shape, stddev=0.1)
     return tf.Variable(initial)
 
 def bias_variable(shape):
-    initial = tf.constant(0.02, shape=shape)
+    initial = tf.constant(0.0, shape=shape)
     return tf.Variable(initial)
 
 def inputs(dataset_file, batch_size, num_epochs):
@@ -105,11 +107,62 @@ def inputs(dataset_file, batch_size, num_epochs):
 
         # map takes a python function and applies it to every sample
         dataset = dataset.map(decode)
+
         # dataset = dataset.map(augment)
         # dataset = dataset.map(normalize)
 
         # the parameter is the queue size
-        dataset = dataset.shuffle(QUEUE_SIZE * batch_size)
+
+        #dataset = dataset.shuffle(QUEUE_SIZE * batch_size)
+        dataset = dataset.batch(batch_size)
+
+        iterator = dataset.make_one_shot_iterator()
+    return iterator.get_next()
+
+def test_inputs(dataset_file, batch_size, num_epochs):
+    """Reads input data num_epochs times.
+
+    Parameters
+    ----------
+        train: Selects between the training (True) and validation (False) data.
+        batch_size: Number of examples per returned batch.
+        num_epochs: Number of times to read the input data, or 0/None to train forever.
+
+    Returns
+    -------
+        A tuple (images, labels), where:
+
+        * images is a float tensor with shape [batch_size, mnist.IMAGE_PIXELS]
+        in the range [-0.5, 0.5].
+        * labels is an int32 tensor with shape [batch_size] with the true label,
+        a number in the range [0, mnist.NUM_CLASSES).
+
+        This function creates a one_shot_iterator, meaning that it will only iterate
+        over the dataset once. On the other hand there is no special initialization
+        required.
+    """
+    if not num_epochs:
+        num_epochs = None
+    filename = os.path.join(DATA_DIR, dataset_file)
+
+    with tf.name_scope('test_input'):
+        # TFRecordDataset opens a protobuf and reads entries line by line
+        # could also be [list, of, filenames]
+
+        dataset = tf.data.TFRecordDataset(filename)
+
+        dataset = dataset.repeat(num_epochs)
+
+        # map takes a python function and applies it to every sample
+        dataset = dataset.map(decode)
+
+        # dataset = dataset.map(augment)
+        # dataset = dataset.map(normalize)
+
+        # the parameter is the queue size
+
+        #dataset = dataset.shuffle(QUEUE_SIZE * batch_size)
+
         dataset = dataset.batch(batch_size)
 
         iterator = dataset.make_one_shot_iterator()
@@ -132,7 +185,7 @@ def generate_cnn(image_batch, n_filters, filters_sizes, pool_sizes, reuse, flatt
                 filters=n_filters[i],
                 kernel_size=filters_sizes[i],
                 strides=(1, 1),
-                activation=tf.nn.leaky_relu,
+                activation=tf.nn.relu,
                 kernel_regularizer=regularizer
             )
 
@@ -183,7 +236,7 @@ def generate_fc(fc_input, layer_sizes):
         fc_input = tf.layers.dense(
             inputs=fc_input,
             units=layer_sizes[i],
-            activation=tf.nn.leaky_relu,
+            activation=tf.nn.relu,
             kernel_regularizer=regularizer
         )
 
@@ -193,8 +246,7 @@ def generate_fc(fc_input, layer_sizes):
 
     return result
 
-
-def train_fn():
+def train_fn(test=False):
     """Function to run the train session."""
     with tf.Graph().as_default():
         image_batch, label_batch = inputs(TRAIN_FILE, batch_size=BATCH_SIZE,
@@ -231,6 +283,21 @@ def train_fn():
                 layer_sizes=[256, 128]
             )
 
+        elif NETWORK_CHOICE == "simple1":
+            network_cnn = generate_cnn(
+                image_batch=image_batch_placeholder,
+                n_filters=[8, 16, 32, 16],
+                filters_sizes=[[2, 2], [2, 2], [3, 3], [3, 3]],
+                pool_sizes=[[2, 2], [2, 2], [2, 2], [3, 3]],
+                reuse=tf.AUTO_REUSE,
+                flatten=True
+            )
+
+            network_fc = generate_fc(
+                fc_input=network_cnn,
+                layer_sizes=[]
+            )
+
         # --- Network for testing configuration 1 ---
         elif NETWORK_CHOICE == "test_1":
             network_cnn = generate_cnn(
@@ -246,7 +313,6 @@ def train_fn():
                 fc_input=network_cnn,
                 layer_sizes=[2048, 512, 256, 64, 16]
             )
-
 
         # --- Default network ---
         else:
@@ -272,7 +338,16 @@ def train_fn():
         regularisation_loss = tf.losses.get_regularization_loss()
         loss += regularisation_loss
 
-        train_step = tf.train.AdamOptimizer(LEARNING_RATE).minimize(loss)
+        infer_placeholder = tf.placeholder(tf.float32,
+                                            shape=[BATCH_SIZE, N_CLASSES])
+        label_placeholder = tf.placeholder(tf.float32,
+                                            shape=[BATCH_SIZE, N_CLASSES])
+        pred = tf.argmax(infer_placeholder, 1)
+        label = tf.argmax(label_placeholder, 1)
+        correct_prediction = tf.equal(pred, label)
+        accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+        train_step = tf.train.AdamOptimizer().minimize(loss)
         # saver = tf.train.Saver()
 
         config = tf.ConfigProto(device_count={"CPU": N_CPU},
@@ -315,6 +390,12 @@ def train_fn():
                             "- iteration time: %.2fs" % iteration_time,
                             " IMPROVING" if loss_out < old_loss else "",
                             sep="")
+                        #print(sess.run(tf.argmax(label_batch_one_hot, 1)))
+                        #print(sess.run(tf.argmax(infer_out, 1)))
+                        print("Accuracy for this mini-batch: ", sess.run(accuracy, feed_dict={
+                            infer_placeholder: infer_out
+                            , label_placeholder: label_batch_one_hot_out
+                        }))
                         old_loss = loss_out
                     # if(i%50 == 0):
                     #    saver.save(sess, "dltmp/checkpoint-train.ckpt")
@@ -324,9 +405,72 @@ def train_fn():
                 total_running_time = time.time() - start_time
                 print('Done training for %d epochs, %d steps, %1.2f seconds.' % (N_EPOCHS, step, total_running_time))
 
+            if test:
+                test_fn(network_fc, loss, image_batch_placeholder, label_batch_placeholder
+                        , accuracy, infer_placeholder, label_placeholder)
+                    #print(sess.run(tf.argmax(label_batch_one_hot, 1)))
+                    #print(sess.run(tf.argmax(infer_out, 1)))
+                    #print("Accuracy for this mini-batch: ", sess.run(accuracy))
+                    #old_loss = loss_out
+
+                #print(sess.run(tf.argmax(label_batch_one_hot, 1)))
+                #print(sess.run(tf.argmax(infer_out, 1)))
+
+
             coord.request_stop()
             coord.join(threads)
             sess.close()
+
+def test_fn(network_fc, loss, image_batch_placeholder, label_batch_placeholder
+            , accuracy, infer_placeholder, label_placeholder):
+    config = tf.ConfigProto(device_count={"CPU": N_CPU},
+                            inter_op_parallelism_threads=1,
+                            intra_op_parallelism_threads=1)
+
+    with tf.Session(config=config) as sess:
+        print("Starting training.. Using {} network architecture.".format(NETWORK_CHOICE))
+        # Visualize the graph through tensorboard.
+        # file_writer = tf.summary.FileWriter("./logs", sess.graph)
+
+        sess.run(tf.global_variables_initializer())
+        # saver.restore(sess, "dltmp/checkpoint-train.ckpt")
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(coord=coord, sess=sess)
+
+        test_images, test_label = test_inputs(TEST_FILE, batch_size=BATCH_SIZE, num_epochs=1)
+
+        test_images_placeholder = tf.placeholder(tf.float32,
+                                                 shape=[BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, N_CHANNELS])
+        test_label_placeholder = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_CLASSES])
+
+        step = 0
+        print("----------------")
+        print("Testing started")
+        test_accuracy = 0
+        try:
+            while True:
+                test_label_offset = -tf.ones([BATCH_SIZE], dtype=tf.int64, name="test_label_offset")
+                test_label_one_hot = tf.one_hot(tf.add(test_label, test_label_offset),
+                                                depth=N_CLASSES, on_value=1.0, off_value=0.0)
+
+                test_images_out, test_label_out, test_label_one_hot_out = sess.run(
+                    [test_images, test_label, test_label_one_hot])
+                start_time_iteration = time.time()
+                test_infer = sess.run(network_fc,
+                                                 feed_dict={image_batch_placeholder: test_images_out,
+                                                            label_batch_placeholder: test_label_one_hot_out})
+                test_accuracy += BATCH_SIZE * sess.run(accuracy, feed_dict={infer_placeholder : test_infer
+                                                            , label_placeholder : test_label_one_hot_out})
+                # sess.run(tf.round(infer_out))
+                # correct_prediction = tf.equal(tf.argmax(infer_out, 1), tf.argmax(label_batch_one_hot, 1))
+                # accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+                # Save time (iteration)
+
+                step+=1
+        except tf.errors.OutOfRangeError:
+            # Save time (full)
+            print('Done training for %d epochs, %d steps' % (N_EPOCHS, step))
+        print("Test accuracy: %.3f " % (float(test_accuracy)/TEST_SET_SIZE))
 
 
 if __name__ == '__main__':
@@ -334,4 +478,5 @@ if __name__ == '__main__':
         with tf.Session() as sess:
             sess.run(split_dataset())
             sess.close()
-    train_fn()
+    train_fn(test=True)
+    #test_fn()
