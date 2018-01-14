@@ -1,0 +1,21 @@
+Running test suite.
+Test: 0 | network: simple_1 | optimizer: AdamOptimizer | minibatch: 32 | learning rate: 0.01 |
+2018-01-14 18:05:13.834341: I tensorflow/core/platform/cpu_feature_guard.cc:137] Your CPU supports instructions that this TensorFlow binary was not compiled to use: SSE4.1 SSE4.2 AVX AVX2 FMA
+	0: loss: 1.490491 | iteration time: 1.65s | accuracy: 0.25 | absolute min: 1.490491 | improvement: Not available
+	1: loss: 1.436831 | iteration time: 1.62s | accuracy: 0.31 | absolute min: 1.436831 | improvement: GOOD
+	2: loss: 1.593042 | iteration time: 1.57s | accuracy: 0.16 | absolute min: 1.436831 | improvement: BAD
+	3: loss: 1.436753 | iteration time: 1.56s | accuracy: 0.31 | absolute min: 1.436753 | improvement: LOW
+	4: loss: 1.467965 | iteration time: 1.65s | accuracy: 0.28 | absolute min: 1.436753 | improvement: PROMISING
+	5: loss: 1.530427 | iteration time: 1.64s | accuracy: 0.22 | absolute min: 1.436753 | improvement: LOW
+	6: loss: 1.499139 | iteration time: 1.53s | accuracy: 0.25 | absolute min: 1.436753 | improvement: LOW
+	7: loss: 1.467852 | iteration time: 1.56s | accuracy: 0.28 | absolute min: 1.436753 | improvement: LOW
+	8: loss: 1.499065 | iteration time: 1.54s | accuracy: 0.25 | absolute min: 1.436753 | improvement: PROMISING
+	9: loss: 1.530279 | iteration time: 1.57s | accuracy: 0.22 | absolute min: 1.436753 | improvement: LOW
+	10: loss: 1.436493 | iteration time: 1.63s | accuracy: 0.31 | absolute min: 1.436493 | improvement: PROMISING
+	11: loss: 1.436458 | iteration time: 1.55s | accuracy: 0.31 | absolute min: 1.436458 | improvement: PROMISING
+	12: loss: 1.530174 | iteration time: 1.57s | accuracy: 0.22 | absolute min: 1.436458 | improvement: PROMISING
+	13: loss: 1.498890 | iteration time: 1.50s | accuracy: 0.25 | absolute min: 1.436458 | improvement: PROMISING
+	14: loss: 1.561356 | iteration time: 1.66s | accuracy: 0.19 | absolute min: 1.436458 | improvement: PROMISING
+	15: loss: 1.530073 | iteration time: 1.57s | accuracy: 0.22 | absolute min: 1.436458 | improvement: LOW
+	16: loss: 1.655041 | iteration time: 1.62s | accuracy: 0.09 | absolute min: 1.436458 | improvement: LOW
+	17: loss: 1.436259 | iteration time: 1.58s | accuracy: 0.31 | absolute min: 1.436259 | improvement: LOW

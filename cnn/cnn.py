@@ -39,7 +39,7 @@ FEATURES_LIST = {"image/encoded": tf.FixedLenFeature([], tf.string),
 N_CPU = 12
 SPLIT_DATASET = False
 USING_TEST_SUITE = False
-MAX_LEN_VALUES_LIST = 20
+MAX_LEN_VALUES_LIST = 150
 
 N_EPOCHS = 50
 BATCH_SIZE = 32  # using a power of 2
@@ -394,6 +394,7 @@ def train_fn(test=False,
             start_time = time.time()
             step = 0
             check_iteration = 0  # as step but may be resetted
+            abs_min = np.inf
             last_values_list = []
             try:
                 while True:
@@ -412,6 +413,8 @@ def train_fn(test=False,
 
                     if step % PRINT_RESOLUTION == 0:
 
+                        abs_min = abs_min if abs_min < loss_out else loss_out
+
                         # Check average improvement
                         last_values_list.append(loss_out)
                         # Don't make the list too large
@@ -420,18 +423,24 @@ def train_fn(test=False,
 
                         if step > 0:
                             # Check average improvement
-                            half = len(last_values_list) // 2
-                            first_half_list = last_values_list[:half]
-                            second_half_list = last_values_list[half:]
+                            sep_value = len(last_values_list) * 7 // 10
+                            # print(sep_value, len(last_values_list))
+                            if sep_value > len(last_values_list) - 1 or sep_value < 1:
+                                sep_value = len(last_values_list) - 1
+                            # print(sep_value)
+                            first_chunk_list = last_values_list[:sep_value]
+                            # print(first_chunk_list)
+                            second_chunk_list = last_values_list[sep_value:]
+                            # print(second_chunk_list)
 
                             imrovement_str_list = ["BAD", "UNCLEAR", "LOW", "PROMISING", "GOOD"]
-                            if np.average(second_half_list) < np.min(first_half_list):
+                            if np.average(second_chunk_list) < np.min(first_chunk_list):
                                 improvement_grade = 4
-                            elif np.average(second_half_list) < np.average(first_half_list):
+                            elif np.average(second_chunk_list) < np.average(first_chunk_list):
                                 improvement_grade = 3
-                            elif np.min(second_half_list) < np.average(first_half_list):
+                            elif np.min(second_chunk_list) < np.average(first_chunk_list):
                                 improvement_grade = 2
-                            elif np.min(second_half_list) < np.max(first_half_list):
+                            elif np.min(second_chunk_list) < np.max(first_chunk_list):
                                 improvement_grade = 1
                             else:
                                 improvement_grade = 0
@@ -442,12 +451,13 @@ def train_fn(test=False,
                             improvement_grade = 5
 
                         print("\t",
-                              step, ": ", "loss: %.3f" % loss_out,
+                              step, ": ", "loss: %.6f" % loss_out,
                               " | iteration time: %.2fs" % iteration_time,
                               " | accuracy: %.2f" % sess.run(accuracy, feed_dict={
                                   infer_placeholder: infer_out,
                                   label_placeholder: label_batch_one_hot_out
                               }),
+                              " | absolute min: %.6f" % abs_min,
                               " | improvement: ", improvement_str,
                               sep="")
                         #print(sess.run(tf.argmax(label_batch_one_hot, 1)))
