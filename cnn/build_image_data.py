@@ -76,9 +76,9 @@ import threading
 import numpy as np
 import tensorflow as tf
 
-tf.app.flags.DEFINE_string('train_directory', '../dataset',
+tf.app.flags.DEFINE_string('train_directory', '../norm_dataset',
                            'Training data directory')
-tf.app.flags.DEFINE_string('output_directory', '../dataset',
+tf.app.flags.DEFINE_string('output_directory', '../norm_dataset',
                            'Output data directory')
 
 tf.app.flags.DEFINE_integer('train_shards', 1,

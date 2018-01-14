@@ -7,8 +7,9 @@ Some code borrowed from: https://github.com/aymericdamien/TensorFlow-Examples/bl
 import tensorflow as tf  # tensorflow module
 import numpy as np  # numpy module
 import os  # path join
-from cnn.build_image_data import split_dataset
+from build_image_data import split_dataset
 import time
+from vae import VariationalAutoencoder, xavier_init
 
 # --- Constants ---
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -36,9 +37,9 @@ N_CPU = 8
 SPLIT_DATASET = False
 
 N_EPOCHS = 5
-BATCH_SIZE = 64  # using a power of 2
+BATCH_SIZE = 32  # using a power of 2
 QUEUE_SIZE = 2
-IMAGE_SIZE = 1536
+IMAGE_SIZE = 512
 N_CHANNELS = 3
 N_CLASSES = 4
 FILTERS_CHOICES_LAYER_1 = [2, 3, 5, 4, 6, 10, 7]
@@ -359,8 +360,8 @@ def train_fn(test=False):
         # saver = tf.train.Saver()
 
         config = tf.ConfigProto(device_count={"CPU": N_CPU},
-                                inter_op_parallelism_threads=10,
-                                intra_op_parallelism_threads=10)
+                                inter_op_parallelism_threads=8,
+                                intra_op_parallelism_threads=8)
 
         with tf.Session(config=config) as sess:
             print("Starting training.. Using {} network architecture.".format(NETWORK_CHOICE))
@@ -481,10 +482,50 @@ def test_fn(network_fc, loss, image_batch_placeholder, label_batch_placeholder
         print("Test accuracy: %.3f " % (float(test_accuracy)/TEST_SET_SIZE))
 
 
+def train_vae(network_architecture, learning_rate=0.001, display_step=5):
+    vae = VariationalAutoencoder(network_architecture,
+                                 learning_rate=learning_rate,
+                                 batch_size=BATCH_SIZE)
+    image_batch, label_batch = inputs(TRAIN_FILE, batch_size=BATCH_SIZE,
+                                      num_epochs=N_EPOCHS)
+    image_batch_placeholder = tf.placeholder(tf.float32,
+                                             shape=[BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, N_CHANNELS])
+    image_batch = tf.reshape(image_batch, (BATCH_SIZE, IMAGE_SIZE*IMAGE_SIZE*N_CHANNELS))
+    # Training cycle
+    for epoch in range(N_EPOCHS):
+        avg_cost = 0.
+        total_batch = int(TRAINING_SET_SIZE / BATCH_SIZE)
+        # Loop over all batches
+        for i in range(total_batch):
+            print("...")
+            batch_xs = vae.sess.run(image_batch)
+
+            # Fit training using batch data
+            cost = vae.partial_fit(batch_xs)
+            # Compute average loss
+            avg_cost += cost / TRAINING_SET_SIZE * BATCH_SIZE
+
+        # Display logs per epoch step
+        if epoch % display_step == 0:
+            print("Epoch:", '%04d' % (epoch+1),
+                  "cost=", "{:.9f}".format(avg_cost))
+    return vae
+
+network_architecture = \
+    dict(n_hidden_recog_1=500, # 1st layer encoder neurons
+         n_hidden_recog_2=500, # 2nd layer encoder neurons
+         n_hidden_gener_1=500, # 1st layer decoder neurons
+         n_hidden_gener_2=500, # 2nd layer decoder neurons
+         n_input=IMAGE_SIZE*IMAGE_SIZE*3, # MNIST data input (img shape: 28*28)
+         n_z=20)  # dimensionality of latent space
+
+
+
 if __name__ == '__main__':
     if SPLIT_DATASET:
         with tf.Session() as sess:
             sess.run(split_dataset())
             sess.close()
-    train_fn(test=True)
+    #train_fn(test=True)
+    vae = train_vae(network_architecture)
     #test_fn()

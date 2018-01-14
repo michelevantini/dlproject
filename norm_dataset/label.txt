@@ -1,0 +1,4 @@
+benign
+insitu
+invasive
+normal
