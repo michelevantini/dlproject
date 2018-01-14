@@ -7,17 +7,20 @@ Some code borrowed from: https://github.com/aymericdamien/TensorFlow-Examples/bl
 import tensorflow as tf  # tensorflow module
 import numpy as np  # numpy module
 import os  # path join
+
 from build_image_data import split_dataset
+# from .build_image_data import split_dataset
 import time
 from vae import VariationalAutoencoder, xavier_init
 
+
 # --- Constants ---
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
-DATA_DIR = os.path.join(CURRENT_DIR, os.path.pardir, "dataset")
+DATA_DIR = os.path.join(CURRENT_DIR, os.path.pardir, "norm_dataset")
 TRAIN_FILE = "train.tfrecord"
 TEST_FILE = "test.tfrecord"
 VALIDATION_FILE = "validation.tfrecord"
-assert os.path.exists(os.path.join(DATA_DIR, TRAIN_FILE))
+# assert os.path.exists(os.path.join(DATA_DIR, TRAIN_FILE))
 # assert os.path.exists(DATA_DIR, VALIDATION_FILE)
 
 TRAINING_SET_SIZE = 2560
@@ -35,6 +38,8 @@ FEATURES_LIST = {"image/encoded": tf.FixedLenFeature([], tf.string),
 # --- Settings ---
 N_CPU = 12
 SPLIT_DATASET = False
+USING_TEST_SUITE = False
+MAX_LEN_VALUES_LIST = 20
 
 N_EPOCHS = 50
 BATCH_SIZE = 32  # using a power of 2
@@ -48,7 +53,8 @@ CNN_REGULARIZATION = 0.0002
 FC_REGULARIZATION = 0.0002
 PRINT_RESOLUTION = 1  # print an update every x iterations
 
-NETWORK_CHOICE = "simple1"  # choices: "default", "original", "test_1", "simple1"
+OPTIMIZER = tf.train.AdamOptimizer
+NETWORK_CHOICE = "default"  # choices: "default", "original", "test_1", "simple_1"
 
 
 def _int64_feature(value):
@@ -260,7 +266,10 @@ def generate_fc(fc_input, layer_sizes):
     return result
 
 
-def train_fn(test=False):
+def train_fn(test=False,
+             check_after_x_iterations=None,
+             check_again_after_x=None,
+             good_cross_entropy_threshold=None):
     """Function to run the train session."""
     with tf.Graph().as_default():
         image_batch, label_batch = inputs(TRAIN_FILE, batch_size=BATCH_SIZE,
@@ -297,7 +306,7 @@ def train_fn(test=False):
                 layer_sizes=[256, 128]
             )
 
-        elif NETWORK_CHOICE == "simple1":
+        elif NETWORK_CHOICE == "simple_1":
             network_cnn = generate_cnn(
                 image_batch=image_batch_placeholder,
                 n_filters=[8, 16, 32, 16],
@@ -336,7 +345,7 @@ def train_fn(test=False):
                 n_filters=[32],
                 filters_sizes=[[3, 3]],
                 pool_sizes=[[2, 2]],
-                reuse=False,
+                reuse=tf.AUTO_REUSE,
                 flatten=True
             )
 
@@ -347,6 +356,7 @@ def train_fn(test=False):
             )
         else:
             raise ValueError("Nonexistent NETWORK_CHOICE: {}".format(NETWORK_CHOICE))
+
 
         loss = tf.losses.softmax_cross_entropy(onehot_labels=label_batch_placeholder,
                                                logits=network_fc)
@@ -362,15 +372,16 @@ def train_fn(test=False):
         correct_prediction = tf.equal(pred, label)
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-        train_step = tf.train.AdamOptimizer().minimize(loss)
+        train_step = OPTIMIZER().minimize(loss)
         # saver = tf.train.Saver()
 
         config = tf.ConfigProto(device_count={"CPU": N_CPU},
-                                inter_op_parallelism_threads=8,
-                                intra_op_parallelism_threads=8)
+                                inter_op_parallelism_threads=N_CPU+2,
+                                intra_op_parallelism_threads=N_CPU+2)
 
         with tf.Session(config=config) as sess:
-            print("Starting training.. Using {} network architecture.".format(NETWORK_CHOICE))
+            if not USING_TEST_SUITE:
+                print("Starting training.. Using {} network architecture.".format(NETWORK_CHOICE))
             # Visualize the graph through tensorboard.
             # file_writer = tf.summary.FileWriter("./logs", sess.graph)
 
@@ -379,11 +390,11 @@ def train_fn(test=False):
             coord = tf.train.Coordinator()
             threads = tf.train.start_queue_runners(coord=coord, sess=sess)
 
-
             # Start taking time (full)
             start_time = time.time()
-            old_loss = np.Inf
             step = 0
+            check_iteration = 0  # as step but may be resetted
+            last_values_list = []
             try:
                 while True:
                     image_out, label_out, label_batch_one_hot_out = sess.run(
@@ -400,21 +411,65 @@ def train_fn(test=False):
                     iteration_time = time.time() - start_time_iteration
 
                     if step % PRINT_RESOLUTION == 0:
-                        print(
-                            step, ": ", "loss: %.3f " % loss_out,
-                            "- iteration time: %.2fs" % iteration_time,
-                            " IMPROVING" if loss_out < old_loss else "",
-                            sep="")
+
+                        # Check average improvement
+                        last_values_list.append(loss_out)
+                        # Don't make the list too large
+                        if len(last_values_list) > MAX_LEN_VALUES_LIST:
+                            last_values_list = last_values_list[1:]
+
+                        if step > 0:
+                            # Check average improvement
+                            half = len(last_values_list) // 2
+                            first_half_list = last_values_list[:half]
+                            second_half_list = last_values_list[half:]
+
+                            imrovement_str_list = ["BAD", "UNCLEAR", "LOW", "PROMISING", "GOOD"]
+                            if np.average(second_half_list) < np.min(first_half_list):
+                                improvement_grade = 4
+                            elif np.average(second_half_list) < np.average(first_half_list):
+                                improvement_grade = 3
+                            elif np.min(second_half_list) < np.average(first_half_list):
+                                improvement_grade = 2
+                            elif np.min(second_half_list) < np.max(first_half_list):
+                                improvement_grade = 1
+                            else:
+                                improvement_grade = 0
+
+                            improvement_str = imrovement_str_list[improvement_grade]
+                        else:
+                            improvement_str = "Not available"
+                            improvement_grade = 5
+
+                        print("\t",
+                              step, ": ", "loss: %.3f" % loss_out,
+                              " | iteration time: %.2fs" % iteration_time,
+                              " | accuracy: %.2f" % sess.run(accuracy, feed_dict={
+                                  infer_placeholder: infer_out,
+                                  label_placeholder: label_batch_one_hot_out
+                              }),
+                              " | improvement: ", improvement_str,
+                              sep="")
                         #print(sess.run(tf.argmax(label_batch_one_hot, 1)))
                         #print(sess.run(tf.argmax(infer_out, 1)))
-                        print("Accuracy for this mini-batch: ", sess.run(accuracy, feed_dict={
-                            infer_placeholder: infer_out
-                            , label_placeholder: label_batch_one_hot_out
-                        }))
-                        old_loss = loss_out
+
+                        # Check if it's time to leave.
+                        if USING_TEST_SUITE and \
+                            step >= check_after_x_iterations and \
+                            check_iteration >= check_again_after_x:
+                            check_iteration = 0
+                            if improvement_grade >= 3:
+                                if loss_out < good_cross_entropy_threshold:
+                                    good_cross_entropy_threshold = loss_out
+                            elif loss_out < good_cross_entropy_threshold:
+                                good_cross_entropy_threshold = loss_out
+                            else:
+                                raise NoImprovementsException("", "")
+
                     # if(i%50 == 0):
                     #    saver.save(sess, "dltmp/checkpoint-train.ckpt")
                     step += 1
+                    check_iteration += 1
             except tf.errors.OutOfRangeError:
                 # Save time (full)
                 total_running_time = time.time() - start_time
@@ -436,14 +491,15 @@ def train_fn(test=False):
             coord.join(threads)
             sess.close()
 
+
 def test_fn(network_fc, loss, image_batch_placeholder, label_batch_placeholder
             , accuracy, infer_placeholder, label_placeholder):
     config = tf.ConfigProto(device_count={"CPU": N_CPU},
-                            inter_op_parallelism_threads=10,
-                            intra_op_parallelism_threads=10)
+                            inter_op_parallelism_threads=N_CPU,
+                            intra_op_parallelism_threads=N_CPU)
 
     with tf.Session(config=config) as sess:
-        print("Starting training.. Using {} network architecture.".format(NETWORK_CHOICE))
+        print("\tStarting testing.. Using {} network architecture.".format(NETWORK_CHOICE))
         # Visualize the graph through tensorboard.
         # file_writer = tf.summary.FileWriter("./logs", sess.graph)
 
@@ -459,8 +515,8 @@ def test_fn(network_fc, loss, image_batch_placeholder, label_batch_placeholder
         test_label_placeholder = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_CLASSES])
 
         step = 0
-        print("----------------")
-        print("Testing started")
+        print("\t----------------")
+        print("\tTesting started")
         test_accuracy = 0
         try:
             while True:
@@ -481,11 +537,60 @@ def test_fn(network_fc, loss, image_batch_placeholder, label_batch_placeholder
                 # accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
                 # Save time (iteration)
 
-                step+=1
+                step += 1
         except tf.errors.OutOfRangeError:
             # Save time (full)
-            print('Done training for %d epochs, %d steps' % (N_EPOCHS, step))
-        print("Test accuracy: %.3f " % (float(test_accuracy)/TEST_SET_SIZE))
+            print('\tTraining for %d epochs done, %d steps' % (N_EPOCHS, step))
+        print("\tTest accuracy: %.3f " % (float(test_accuracy)/TEST_SET_SIZE))
+
+
+def test_suite():
+    optimizers_list = [tf.train.AdamOptimizer,
+                       tf.train.AdadeltaOptimizer,
+                       tf.train.MomentumOptimizer,
+                       tf.train.GradientDescentOptimizer]
+
+    learning_rates_list = [a * 10**(-exp) for exp in range(2, 7) for a in [1, 0.5]]
+
+    minibatch_sizes_list = [32, 50, 64, 128]
+
+    architechtures_list = ["simple_1", "test_1", "original", "default"]
+
+    check_after_x_iterations = 600
+
+    check_again_after_x = 100
+
+    good_cross_entropy_threshold = 1.4
+
+    print("Running test suite.")
+
+    global NETWORK_CHOICE
+    global OPTIMIZER
+    global LEARNING_RATE
+    global BATCH_SIZE
+    global USING_TEST_SUITE
+    USING_TEST_SUITE = True
+
+    test_number = 0
+    for arch in architechtures_list:
+        for optimizer in optimizers_list:
+            for minibatch_size in minibatch_sizes_list:
+                for learning_rate in learning_rates_list:
+                    NETWORK_CHOICE = arch
+                    OPTIMIZER = optimizer
+                    BATCH_SIZE = minibatch_size
+                    LEARNING_RATE = learning_rate
+                    print("Test: {} | network: {} | optimizer: {} | minibatch: {} | learning rate: {} |".format(
+                        test_number, arch, OPTIMIZER.__name__, minibatch_size, learning_rate
+                    ))
+                    try:
+                        train_fn(test=True,
+                                 check_after_x_iterations=check_after_x_iterations,
+                                 check_again_after_x=check_again_after_x,
+                                 good_cross_entropy_threshold=good_cross_entropy_threshold)
+                    except NoImprovementsException as no_improvement:
+                        print("Stopping {}, no more improvement.\n\n".format(test_number))
+                    test_number += 1
 
 
 def train_vae(network_architecture, learning_rate=0.001, display_step=5):
@@ -517,6 +622,7 @@ def train_vae(network_architecture, learning_rate=0.001, display_step=5):
                   "cost=", "{:.9f}".format(avg_cost))
     return vae
 
+
 network_architecture = \
     dict(n_hidden_recog_1=500, # 1st layer encoder neurons
          n_hidden_recog_2=500, # 2nd layer encoder neurons
@@ -526,19 +632,11 @@ network_architecture = \
          n_z=20)  # dimensionality of latent space
 
 
-def TEST_SUITE():
-    optimizers = [tf.train.AdamOptimizer,
-                  tf.train.AdadeltaOptimizer,
-                  tf.train.MomentumOptimizer,
-                  tf.train.GradientDescentOptimizer]
-
-    learning_rates = [a * 10**(-exp) for exp in range(2, 7) for a in [1, 0.5]]
-
-    minibatch_sizes = [32, 50, 64, 128]
-
-    architechture = ["original", "simple_1"]
-
-    print("Running test suite.")
+class NoImprovementsException(Exception):
+    def __init__(self, message, errors):
+        # Call the base class constructor with the parameters it needs
+        super(NoImprovementsException, self).__init__(message)
+        self.errors = errors
 
 
 if __name__ == '__main__':
@@ -546,6 +644,8 @@ if __name__ == '__main__':
         with tf.Session() as sess:
             sess.run(split_dataset())
             sess.close()
-    #train_fn(test=True)
-    vae = train_vae(network_architecture)
-    #test_fn()
+    # train_fn(test=True)
+    # vae = train_vae(network_architecture)
+    # train_fn(test=True)
+    # test_fn()
+    test_suite()
