@@ -33,10 +33,10 @@ FEATURES_LIST = {"image/encoded": tf.FixedLenFeature([], tf.string),
 
 
 # --- Settings ---
-N_CPU = 8
+N_CPU = 12
 SPLIT_DATASET = False
 
-N_EPOCHS = 5
+N_EPOCHS = 50
 BATCH_SIZE = 32  # using a power of 2
 QUEUE_SIZE = 2
 IMAGE_SIZE = 512
@@ -73,13 +73,16 @@ def decode(serialized_example):
     # image_object.label = label
     return image, label
 
+
 def weight_variable(shape):
     initial = tf.random_normal(shape, stddev=0.1)
     return tf.Variable(initial)
 
+
 def bias_variable(shape):
     initial = tf.constant(0.0, shape=shape)
     return tf.Variable(initial)
+
 
 def inputs(dataset_file, batch_size, num_epochs):
     """Reads input data num_epochs times.
@@ -126,6 +129,7 @@ def inputs(dataset_file, batch_size, num_epochs):
 
         iterator = dataset.make_one_shot_iterator()
     return iterator.get_next()
+
 
 def test_inputs(dataset_file, batch_size, num_epochs):
     """Reads input data num_epochs times.
@@ -255,6 +259,7 @@ def generate_fc(fc_input, layer_sizes):
 
     return result
 
+
 def train_fn(test=False):
     """Function to run the train session."""
     with tf.Graph().as_default():
@@ -324,8 +329,7 @@ def train_fn(test=False):
             )
 
         # --- Default network ---
-        else:
-            NETWORK_CHOICE = "default"
+        elif NETWORK_CHOICE == "default":
             # Create the network_cnn structure
             network_cnn = generate_cnn(
                 image_batch=image_batch_placeholder,
@@ -341,6 +345,8 @@ def train_fn(test=False):
                 fc_input=network_cnn,
                 layer_sizes=[]
             )
+        else:
+            raise ValueError("Nonexistent NETWORK_CHOICE: {}".format(NETWORK_CHOICE))
 
         loss = tf.losses.softmax_cross_entropy(onehot_labels=label_batch_placeholder,
                                                logits=network_fc)
@@ -519,6 +525,20 @@ network_architecture = \
          n_input=IMAGE_SIZE*IMAGE_SIZE*3, # MNIST data input (img shape: 28*28)
          n_z=20)  # dimensionality of latent space
 
+
+def TEST_SUITE():
+    optimizers = [tf.train.AdamOptimizer,
+                  tf.train.AdadeltaOptimizer,
+                  tf.train.MomentumOptimizer,
+                  tf.train.GradientDescentOptimizer]
+
+    learning_rates = [a * 10**(-exp) for exp in range(2, 7) for a in [1, 0.5]]
+
+    minibatch_sizes = [32, 50, 64, 128]
+
+    architechture = ["original", "simple_1"]
+
+    print("Running test suite.")
 
 
 if __name__ == '__main__':
