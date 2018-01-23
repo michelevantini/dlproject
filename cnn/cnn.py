@@ -49,8 +49,8 @@ N_CHANNELS = 3
 N_CLASSES = 4
 FILTERS_CHOICES_LAYER_1 = [2, 3, 5, 4, 6, 10, 7]
 LEARNING_RATE = 0.001
-CNN_REGULARIZATION = 0.0002
-FC_REGULARIZATION = 0.0002
+CNN_REGULARIZATION = 0.00002
+FC_REGULARIZATION = 0.00002
 PRINT_RESOLUTION = 1  # print an update every x iterations
 
 OPTIMIZER = tf.train.AdamOptimizer
@@ -203,7 +203,7 @@ def generate_cnn(image_batch, n_filters, filters_sizes, pool_sizes, reuse, flatt
                 filters=n_filters[i],
                 kernel_size=filters_sizes[i],
                 strides=(1, 1),
-                activation=tf.nn.relu,
+                activation=tf.nn.leaky_relu,
                 kernel_regularizer=regularizer
             )
 
@@ -255,7 +255,7 @@ def generate_fc(fc_input, layer_sizes):
         fc_input = tf.layers.dense(
             inputs=fc_input,
             units=layer_sizes[i],
-            activation=tf.nn.relu,
+            activation=tf.nn.leaky_relu,
             kernel_regularizer=regularizer
         )
 
@@ -560,13 +560,13 @@ def test_suite():
                        tf.train.MomentumOptimizer,
                        tf.train.GradientDescentOptimizer]
 
-    learning_rates_list = [a * 10**(-exp) for exp in range(2, 7) for a in [1, 0.5]]
+    learning_rates_list = [a * 10**(-exp) for exp in range(3, 7) for a in [1, 0.5]]
 
     minibatch_sizes_list = [32, 50, 64, 128]
 
-    architechtures_list = ["simple_1", "test_1", "original", "default"]
+    architechtures_list = ["original", "simple_1", "test_1", "default"]
 
-    check_after_x_iterations = 600
+    check_after_x_iterations = 1600
 
     check_again_after_x = 100
 
