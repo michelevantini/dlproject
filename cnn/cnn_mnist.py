@@ -82,7 +82,7 @@ def deepnn(x):
     with tf.name_scope('conv1'):
         W_conv1 = weight_variable(CONV_SIZES[0])
         b_conv1 = bias_variable([N_FILTERS[0]])
-        h_conv1 = tf.nn.relu(conv2d(x, W_conv1) + b_conv1)
+        h_conv1 = tf.nn.leaky_relu(conv2d(x, W_conv1) + b_conv1)
 
     with tf.name_scope('pool1'):
         h_pool1 = max_pool_3x3(h_conv1)
@@ -90,7 +90,7 @@ def deepnn(x):
     with tf.name_scope('conv2'):
         W_conv2 = weight_variable(CONV_SIZES[1])
         b_conv2 = bias_variable([N_FILTERS[1]])
-        h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
+        h_conv2 = tf.nn.leaky_relu(conv2d(h_pool1, W_conv2) + b_conv2)
 
     with tf.name_scope('pool2'):
         h_pool2 = max_pool_2x2(h_conv2)
@@ -98,7 +98,7 @@ def deepnn(x):
     with tf.name_scope('conv3'):
         W_conv3 = weight_variable(CONV_SIZES[2])
         b_conv3 = bias_variable([N_FILTERS[2]])
-        h_conv3 = tf.nn.relu(conv2d(h_pool2, W_conv3) + b_conv3)
+        h_conv3 = tf.nn.leaky_relu(conv2d(h_pool2, W_conv3) + b_conv3)
 
     with tf.name_scope('pool3'):
         h_pool3 = max_pool_2x2(h_conv3)
@@ -106,7 +106,7 @@ def deepnn(x):
     with tf.name_scope('conv4'):
         W_conv4 = weight_variable(CONV_SIZES[3])
         b_conv4 = bias_variable([N_FILTERS[3]])
-        h_conv4 = tf.nn.relu(conv2d(h_pool3, W_conv4) + b_conv4)
+        h_conv4 = tf.nn.leaky_relu(conv2d(h_pool3, W_conv4) + b_conv4)
 
     with tf.name_scope('pool4'):
         h_pool4 = max_pool_3x3(h_conv4)
@@ -114,7 +114,7 @@ def deepnn(x):
     with tf.name_scope('conv5'):
         W_conv5 = weight_variable(CONV_SIZES[4])
         b_conv5 = bias_variable([N_FILTERS[4]])
-        h_conv5 = tf.nn.relu(conv2d(h_pool4, W_conv5) + b_conv5)
+        h_conv5 = tf.nn.leaky_relu(conv2d(h_pool4, W_conv5) + b_conv5)
 
     with tf.name_scope('pool5'):
         h_pool5 = max_pool_3x3(h_conv5)
@@ -131,7 +131,7 @@ def deepnn(x):
         #keep_prob0 = tf.placeholder(tf.float32)
         #h_pool5_flat_drop = tf.nn.dropout(h_pool5_flat, keep_prob0)
 
-        h_fc1 = tf.nn.relu(tf.matmul(h_pool5_flat, W_fc1) + b_fc1)
+        h_fc1 = tf.nn.leaky_relu(tf.matmul(h_pool5_flat, W_fc1) + b_fc1)
 
     #with tf.name_scope('dropout1'):
     #    keep_prob1 = tf.placeholder(tf.float32)
